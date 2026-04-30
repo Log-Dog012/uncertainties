@@ -318,9 +318,9 @@ class UNDArray:
     def __rpow__(self, other: Any) -> "UNDArray":
         return self._binary_op(
             other,
-            lambda exponent, base: np.power(base, exponent),
-            lambda exponent, base: _pow_deriv_exponent(base, exponent),
-            lambda exponent, base: _pow_deriv_base(base, exponent),
+            lambda exp, base: np.power(base, exp),
+            lambda exp, base: _pow_deriv_exponent(base, exp),
+            lambda exp, base: _pow_deriv_base(base, exp),
         )
 
     def reshape(self, *shape: int) -> "UNDArray":
