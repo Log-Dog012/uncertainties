@@ -843,12 +843,12 @@ Original documentation:
             ):
                 if isinstance(x, UNDArray) or isinstance(y, UNDArray):
                     if not args and not kwargs and _np_nom is not None:
-                        def _is_plain_numeric(value):
+                        def _is_fast_path_eligible(value):
                             if isinstance(value, UNDArray):
                                 return True
                             return numpy.asarray(value).dtype != object
 
-                        if _is_plain_numeric(x) and _is_plain_numeric(y):
+                        if _is_fast_path_eligible(x) and _is_fast_path_eligible(y):
                             try:
                                 return _np_nom(x, y)
                             except TypeError:
