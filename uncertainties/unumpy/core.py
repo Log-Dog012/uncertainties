@@ -848,7 +848,7 @@ Original documentation:
                     if not args and not kwargs and _np_nom is not None:
                         try:
                             return _np_nom(x, y)
-                        except (TypeError, AttributeError, ValueError):
+                        except TypeError:
                             pass
                     x_obj = x.to_uarray() if isinstance(x, UNDArray) else x
                     y_obj = y.to_uarray() if isinstance(y, UNDArray) else y

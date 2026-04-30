@@ -240,7 +240,7 @@ class UNDArray:
             n_other = other.n
             l_other = other._linear
             if dother is None:
-                raise TypeError("Binary UNDArray operation missing derivative for other operand")
+                raise TypeError("Binary UNDArray operation requires derivative for other operand")
         else:
             n_other = _as_float64_ndarray(other)
             n_other = np.broadcast_to(n_other, np.broadcast(self.n, n_other).shape)
