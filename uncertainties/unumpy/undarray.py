@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import sqrt
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import numpy as np
 
@@ -234,13 +234,15 @@ class UNDArray:
         other: Any,
         func: Callable[[np.ndarray, np.ndarray], np.ndarray],
         dself: Callable[[np.ndarray, np.ndarray], np.ndarray],
-        dother: Callable[[np.ndarray, np.ndarray], np.ndarray] | None,
+        dother: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]],
     ) -> "UNDArray":
         if isinstance(other, UNDArray):
             n_other = other.n
             l_other = other._linear
             if dother is None:
-                raise TypeError("Binary UNDArray operation requires derivative for other operand")
+                raise TypeError(
+                    "Binary UNDArray operation requires derivative for other operand when other is UNDArray"
+                )
         else:
             n_other = _as_float64_ndarray(other)
             n_other = np.broadcast_to(n_other, np.broadcast(self.n, n_other).shape)
