@@ -178,8 +178,10 @@ class UNDArray:
         coeffs = np.empty(obj.shape, dtype=object)
         for i, element in enumerate(obj.flat):
             if isinstance(element, uncert_core.AffineScalarFunc):
-                element._linear_part.expand()
-                coeffs.flat[i] = dict(element._linear_part.linear_combo)
+                lp = element._linear_part
+                if not lp.expanded():
+                    lp.expand()
+                coeffs.flat[i] = dict(lp.linear_combo)
             else:
                 coeffs.flat[i] = {}
         return UNDArray(n, _LinearPart(coeffs))
@@ -311,4 +313,3 @@ class UNDArray:
                     merged[var] = merged.get(var, 0.0) + c
             out_coeffs[idx] = merged
         return UNDArray(np.asarray(n_out), _LinearPart(out_coeffs))
-

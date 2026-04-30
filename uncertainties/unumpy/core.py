@@ -25,6 +25,36 @@ import uncertainties.umath_core as umath_core
 import uncertainties.core as uncert_core
 from .undarray import UNDArray
 
+
+def fixed_derivative_ufunc(name):
+    if name == "sin":
+        return numpy.cos
+    if name == "cos":
+        return lambda x: -numpy.sin(x)
+    if name == "tan":
+        return lambda x: 1 + numpy.tan(x) ** 2
+    if name == "sinh":
+        return numpy.cosh
+    if name == "cosh":
+        return numpy.sinh
+    if name == "tanh":
+        return lambda x: 1 - numpy.tanh(x) ** 2
+    if name == "exp":
+        return numpy.exp
+    if name == "expm1":
+        return numpy.exp
+    if name == "log":
+        return lambda x: 1 / x
+    if name == "log10":
+        return lambda x: 1 / (x * numpy.log(10.0))
+    if name == "log1p":
+        return lambda x: 1 / (1 + x)
+    if name == "sqrt":
+        return lambda x: 0.5 / numpy.sqrt(x)
+    if name == "fabs":
+        return numpy.sign
+    raise NotImplementedError(f"UNDArray derivative not implemented for {name}")
+
 __all__ = [
     # Factory functions:
     "uarray",
@@ -755,13 +785,22 @@ Original documentation:
 
         if function_name in umath_core.locally_cst_funcs:
             setattr(this_module, unumpy_name, vectorized)
+        elif function_name in ("hypot",):
+            # hypot has 2 arguments; keep legacy behavior.
+            setattr(this_module, unumpy_name, vectorized)
         else:
             deriv_name = func_name_translations.get(function_name, function_name)
 
-            def undarray_wrapper(x, *args, _vectorized=vectorized, **kwargs):
+            def undarray_wrapper(
+                x,
+                *args,
+                _vectorized=vectorized,
+                _deriv_name=deriv_name,
+                **kwargs,
+            ):
                 if isinstance(x, UNDArray) and not args and not kwargs:
-                    f_nom = getattr(numpy, deriv_name)
-                    f_der = fixed_derivative_ufunc(deriv_name)
+                    f_nom = getattr(numpy, _deriv_name)
+                    f_der = fixed_derivative_ufunc(_deriv_name)
                     return x._unary_op(f_nom, f_der)
                 return _vectorized(x, *args, **kwargs)
 
@@ -773,33 +812,3 @@ Original documentation:
 
 
 define_vectorized_funcs()
-
-
-def fixed_derivative_ufunc(name):
-    if name == "sin":
-        return numpy.cos
-    if name == "cos":
-        return lambda x: -numpy.sin(x)
-    if name == "tan":
-        return lambda x: 1 + numpy.tan(x) ** 2
-    if name == "sinh":
-        return numpy.cosh
-    if name == "cosh":
-        return numpy.sinh
-    if name == "tanh":
-        return lambda x: 1 - numpy.tanh(x) ** 2
-    if name == "exp":
-        return numpy.exp
-    if name == "expm1":
-        return numpy.exp
-    if name == "log":
-        return lambda x: 1 / x
-    if name == "log10":
-        return lambda x: 1 / (x * numpy.log(10.0))
-    if name == "log1p":
-        return lambda x: 1 / (1 + x)
-    if name == "sqrt":
-        return lambda x: 0.5 / numpy.sqrt(x)
-    if name == "fabs":
-        return numpy.sign
-    raise NotImplementedError(f"UNDArray derivative not implemented for {name}")
