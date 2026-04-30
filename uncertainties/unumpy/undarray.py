@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import sqrt
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import numpy as np
 
@@ -27,6 +27,55 @@ def _broadcast_to_shape(values: Any, shape: tuple[int, ...]) -> np.ndarray:
     if arr.shape == shape:
         return arr
     return np.broadcast_to(arr, shape).astype(np.float64, copy=False)
+
+
+def _pow_deriv_base(base: np.ndarray, exponent: np.ndarray) -> np.ndarray:
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        exponent_int = np.mod(exponent, 1.0) == 0
+        base_pos = base > 0
+        base_zero = base == 0
+        base_neg = base < 0
+        neg_int_exp_ok = base_neg & exponent_int
+        zero_int_exp_ok = base_zero & exponent_int & (exponent >= 1)
+        zero_zero_ok = base_zero & (exponent == 0)
+        base_ok = base_pos | neg_int_exp_ok | zero_int_exp_ok
+        out = np.where(
+            zero_zero_ok,
+            0.0,
+            np.where(base_ok, exponent * np.power(base, exponent - 1.0), np.nan),
+        )
+    return out
+
+
+def _pow_deriv_exponent(base: np.ndarray, exponent: np.ndarray) -> np.ndarray:
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        base_pos = base > 0
+        out = np.where(base_pos, np.log(base) * np.power(base, exponent), np.nan)
+        out = np.where((base == 0) & (exponent > 0), 0.0, out)
+        out = np.where((base == 0) & (exponent <= 0), np.nan, out)
+    return out
+
+
+def _hypot_deriv_first(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.divide(a, np.hypot(a, b))
+
+
+def _hypot_deriv_second(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.divide(b, np.hypot(a, b))
+
+
+def _atan2_deriv_first(y: np.ndarray, x: np.ndarray) -> np.ndarray:
+    denom = x * x + y * y
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.divide(x, denom)
+
+
+def _atan2_deriv_second(y: np.ndarray, x: np.ndarray) -> np.ndarray:
+    denom = x * x + y * y
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return -np.divide(y, denom)
 
 
 @dataclass(frozen=True)
@@ -197,16 +246,20 @@ class UNDArray:
         other: Any,
         func: Callable[[np.ndarray, np.ndarray], np.ndarray],
         dself: Callable[[np.ndarray, np.ndarray], np.ndarray],
-        dother: Callable[[np.ndarray, np.ndarray], np.ndarray],
+        dother: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]],
     ) -> "UNDArray":
-        other_arr = other
         if isinstance(other, UNDArray):
             n_other = other.n
             l_other = other._linear
+            if dother is None:
+                raise TypeError(
+                    "Internal error: binary operation requires derivative for other operand when other is UNDArray"
+                )
         else:
             n_other = _as_float64_ndarray(other)
             n_other = np.broadcast_to(n_other, np.broadcast(self.n, n_other).shape)
             l_other = _LinearPart.zeros(n_other.shape)
+            dother = None
 
         n_self = np.broadcast_to(self.n, np.broadcast(self.n, n_other).shape)
         if n_self.shape != self.n.shape:
@@ -220,7 +273,9 @@ class UNDArray:
             l_other = _LinearPart(np.broadcast_to(l_other.coeffs, n_self.shape))
 
         n_out = func(n_self, n_other)
-        l_out = l_self.scale(dself(n_self, n_other)).add(l_other.scale(dother(n_self, n_other)))
+        l_out = l_self.scale(dself(n_self, n_other))
+        if dother is not None:
+            l_out = l_out.add(l_other.scale(dother(n_self, n_other)))
         return UNDArray(n_out, l_out)
 
     def __neg__(self) -> "UNDArray":
@@ -262,19 +317,21 @@ class UNDArray:
         )
 
     def __pow__(self, other: Any) -> "UNDArray":
-        # General pow with both operands uncertain is tricky; for now,
-        # support scalar/ndarray exponent without uncertainty.
         if isinstance(other, UNDArray):
-            raise TypeError("UNDArray exponentiation only supports non-UNDArray exponents")
-        p = _as_float64_ndarray(other)
-        p = np.broadcast_to(p, np.broadcast(self.n, p).shape)
-        n_self = np.broadcast_to(self.n, p.shape)
-        l_self = self._linear
-        if n_self.shape != self.n.shape:
-            l_self = _LinearPart(np.broadcast_to(self._linear.coeffs, n_self.shape))
-        n_out = n_self**p
-        factor = p * (n_self ** (p - 1.0))
-        return UNDArray(n_out, l_self.scale(factor))
+            return self._binary_op(other, np.power, _pow_deriv_base, _pow_deriv_exponent)
+        other_arr = np.asarray(other)
+        if other_arr.dtype == object:
+            other_und = UNDArray.from_uarray(other_arr)
+            return self._binary_op(other_und, np.power, _pow_deriv_base, _pow_deriv_exponent)
+        return self._binary_op(other_arr, np.power, _pow_deriv_base, None)
+
+    def __rpow__(self, other: Any) -> "UNDArray":
+        return self._binary_op(
+            other,
+            lambda exp_val, base_val: np.power(base_val, exp_val),
+            lambda exp_val, base_val: _pow_deriv_exponent(base_val, exp_val),
+            lambda exp_val, base_val: _pow_deriv_base(base_val, exp_val),
+        )
 
     def reshape(self, *shape: int) -> "UNDArray":
         n = self.n.reshape(*shape)
@@ -346,9 +403,7 @@ class UNDArray:
             (np.true_divide, np.true_divide,
              lambda a, b: np.ones_like(a) / b,
              lambda a, b: -a / (b * b)),
-            (np.power, np.power,
-             lambda a, b: b * a ** (b - 1.0),
-             None),  # only scalar exponent supported
+            (np.power, np.power, _pow_deriv_base, _pow_deriv_exponent),
             (np.negative, np.negative, lambda a: -np.ones_like(a), None),
             (np.positive, np.positive, lambda a:  np.ones_like(a), None),
             (np.absolute, np.absolute, lambda a: np.sign(a), None),
@@ -373,6 +428,8 @@ class UNDArray:
             (np.radians, np.radians, lambda a: np.full_like(a, np.pi / 180.0), None),
             (np.deg2rad, np.deg2rad, lambda a: np.full_like(a, np.pi / 180.0), None),
             (np.rad2deg, np.rad2deg, lambda a: np.full_like(a, 180.0 / np.pi), None),
+            (np.hypot, np.hypot, _hypot_deriv_first, _hypot_deriv_second),
+            (np.arctan2, np.arctan2, _atan2_deriv_first, _atan2_deriv_second),
         ]:
             _m[ufunc] = (nom, ds, do)
         cls._UFUNC_MAP = _m

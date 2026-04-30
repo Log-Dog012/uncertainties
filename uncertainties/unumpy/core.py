@@ -26,6 +26,12 @@ import uncertainties.core as uncert_core
 from .undarray import UNDArray
 
 
+def _is_fast_path_eligible(value):
+    if isinstance(value, UNDArray):
+        return True
+    return numpy.asarray(value).dtype != object
+
+
 def fixed_derivative_ufunc(name):
     if name == "sin":
         return numpy.cos
@@ -773,6 +779,7 @@ def define_vectorized_funcs():
             for f_name in ["acos", "acosh", "asin", "atan", "atan2", "atanh"]
         ]
     )
+    binary_undarray_funcs = {"hypot", "atan2", "pow"}
 
     new_func_names = [
         func_name_translations.get(function_name, function_name)
@@ -824,9 +831,42 @@ Original documentation:
 
         if function_name in umath_core.locally_cst_funcs:
             setattr(this_module, unumpy_name, vectorized)
-        elif function_name in ("hypot",):
-            # hypot has 2 arguments; keep legacy behavior.
-            setattr(this_module, unumpy_name, vectorized)
+        elif function_name in binary_undarray_funcs:
+            _np_nom_func = {
+                "pow": numpy.power,
+                "atan2": numpy.arctan2,
+                "hypot": numpy.hypot,
+            }[function_name]
+
+            def undarray_wrapper(
+                x,
+                y,
+                *args,
+                _func=func,
+                _vectorized=vectorized,
+                _np_nom=_np_nom_func,
+                **kwargs,
+            ):
+                if isinstance(x, UNDArray) or isinstance(y, UNDArray):
+                    if not args and not kwargs and _np_nom is not None:
+                        if _is_fast_path_eligible(x) and _is_fast_path_eligible(y):
+                            try:
+                                return _np_nom(x, y)
+                            except TypeError:
+                                pass
+                    x_obj = x.to_uarray() if isinstance(x, UNDArray) else x
+                    y_obj = y.to_uarray() if isinstance(y, UNDArray) else y
+                    return UNDArray.from_uarray(_vectorized(x_obj, y_obj, *args, **kwargs))
+                if not args and not kwargs:
+                    x_arr = numpy.asarray(x)
+                    y_arr = numpy.asarray(y)
+                    if x_arr.shape == () and y_arr.shape == ():
+                        return _func(x, y)
+                return _vectorized(x, y, *args, **kwargs)
+
+            undarray_wrapper.__name__ = unumpy_name
+            undarray_wrapper.__doc__ = vectorized.__doc__
+            setattr(this_module, unumpy_name, undarray_wrapper)
         else:
             deriv_name = func_name_translations.get(function_name, function_name)
             # Resolve the numpy nominal-value function once at definition time.
