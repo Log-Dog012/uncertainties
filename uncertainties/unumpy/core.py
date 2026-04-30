@@ -39,6 +39,45 @@ def fixed_derivative_ufunc(name):
         return numpy.sinh
     if name == "tanh":
         return lambda x: 1 - numpy.tanh(x) ** 2
+    if name == "arcsin":
+        return lambda x: 1.0 / numpy.sqrt(1.0 - x**2)
+    if name == "arccos":
+        return lambda x: -1.0 / numpy.sqrt(1.0 - x**2)
+    if name == "arctan":
+        return lambda x: 1.0 / (1.0 + x**2)
+    # umath uses 'asinh' (no arc- prefix); numpy uses 'arcsinh' — both map here.
+    if name in ("asinh", "arcsinh"):
+        return lambda x: 1.0 / numpy.sqrt(1.0 + x**2)
+    if name == "arccosh":
+        return lambda x: 1.0 / numpy.sqrt(x**2 - 1.0)
+    if name == "arctanh":
+        return lambda x: 1.0 / (1.0 - x**2)
+    if name == "degrees":
+        return lambda x: numpy.full_like(x, 180.0 / numpy.pi)
+    if name == "radians":
+        return lambda x: numpy.full_like(x, numpy.pi / 180.0)
+    if name == "erf":
+        return lambda x: 2.0 / numpy.sqrt(numpy.pi) * numpy.exp(-(x**2))
+    if name == "erfc":
+        return lambda x: -2.0 / numpy.sqrt(numpy.pi) * numpy.exp(-(x**2))
+    if name == "gamma":
+        try:
+            from scipy.special import digamma, gamma as scipy_gamma
+
+            return lambda x: scipy_gamma(x) * digamma(x)
+        except ImportError:
+            raise NotImplementedError(
+                "UNDArray derivative of 'gamma' requires scipy"
+            )
+    if name == "lgamma":
+        try:
+            from scipy.special import digamma
+
+            return digamma
+        except ImportError:
+            raise NotImplementedError(
+                "UNDArray derivative of 'lgamma' requires scipy"
+            )
     if name == "exp":
         return numpy.exp
     if name == "expm1":
@@ -134,7 +173,7 @@ def nominal_values(arr):
     """
 
     if isinstance(arr, UNDArray):
-        return unumpy_to_numpy_matrix(arr.nominal_values())
+        return arr.nominal_values()
     return unumpy_to_numpy_matrix(to_nominal_values(arr))
 
 
@@ -153,7 +192,7 @@ def std_devs(arr):
     """
 
     if isinstance(arr, UNDArray):
-        return unumpy_to_numpy_matrix(arr.std_devs())
+        return arr.std_devs()
     return unumpy_to_numpy_matrix(to_std_devs(arr))
 
 
@@ -790,18 +829,34 @@ Original documentation:
             setattr(this_module, unumpy_name, vectorized)
         else:
             deriv_name = func_name_translations.get(function_name, function_name)
+            # Resolve the numpy nominal-value function once at definition time.
+            # Some names differ (e.g. umath uses 'asinh', numpy uses 'arcsinh');
+            # fall back to the un-translated name when needed.
+            _np_nom_func = getattr(numpy, deriv_name, None) or getattr(
+                numpy, function_name, None
+            )
 
             def undarray_wrapper(
                 x,
                 *args,
                 _vectorized=vectorized,
                 _deriv_name=deriv_name,
+                _np_nom=_np_nom_func,
                 **kwargs,
             ):
                 if isinstance(x, UNDArray) and not args and not kwargs:
-                    f_nom = getattr(numpy, _deriv_name)
-                    f_der = fixed_derivative_ufunc(_deriv_name)
-                    return x._unary_op(f_nom, f_der)
+                    # Try the fast analytical path (requires both a numpy nominal
+                    # function and a known derivative formula).
+                    if _np_nom is not None:
+                        try:
+                            f_der = fixed_derivative_ufunc(_deriv_name)
+                            return x._unary_op(_np_nom, f_der)
+                        except NotImplementedError:
+                            pass
+                    # Fall back: convert to object array of Variable/AffineScalarFunc,
+                    # apply the scalar-vectorized function (which tracks correlation
+                    # through Variable objects), then wrap back as UNDArray.
+                    return UNDArray.from_uarray(_vectorized(x.to_uarray()))
                 return _vectorized(x, *args, **kwargs)
 
             undarray_wrapper.__name__ = unumpy_name

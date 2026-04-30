@@ -313,3 +313,101 @@ class UNDArray:
                     merged[var] = merged.get(var, 0.0) + c
             out_coeffs[idx] = merged
         return UNDArray(np.asarray(n_out), _LinearPart(out_coeffs))
+
+    def mean(self, axis=None, dtype=None, out=None, keepdims=False):
+        """Element-wise mean with uncertainty propagation."""
+        if out is not None:
+            raise TypeError("out= is not supported for UNDArray.mean")
+        total = self.sum(axis=axis, keepdims=keepdims)
+        if axis is None:
+            n_elems = self.size
+        else:
+            n_elems = self.shape[axis]
+        return total * (1.0 / n_elems)
+
+    # ------------------------------------------------------------------
+    # NumPy ufunc / array-function protocol
+    # ------------------------------------------------------------------
+
+    #: Mapping of supported numpy ufuncs to (nominal_func, dself, dother).
+    #: For unary ufuncs dother is unused.
+    _UFUNC_MAP: dict = {}
+
+    @classmethod
+    def _build_ufunc_map(cls) -> None:
+        """Populate _UFUNC_MAP lazily to avoid circular imports."""
+        if cls._UFUNC_MAP:
+            return
+        _m: dict = {}
+        for ufunc, nom, ds, do in [
+            (np.add,      np.add,      lambda a, b: np.ones_like(a),  lambda a, b: np.ones_like(b)),
+            (np.subtract, np.subtract, lambda a, b: np.ones_like(a),  lambda a, b: -np.ones_like(b)),
+            (np.multiply, np.multiply, lambda a, b: b,                lambda a, b: a),
+            (np.true_divide, np.true_divide,
+             lambda a, b: np.ones_like(a) / b,
+             lambda a, b: -a / (b * b)),
+            (np.power, np.power,
+             lambda a, b: b * a ** (b - 1.0),
+             None),  # only scalar exponent supported
+            (np.negative, np.negative, lambda a: -np.ones_like(a), None),
+            (np.positive, np.positive, lambda a:  np.ones_like(a), None),
+            (np.absolute, np.absolute, lambda a: np.sign(a), None),
+            (np.sqrt, np.sqrt, lambda a: 0.5 / np.sqrt(a), None),
+            (np.exp,  np.exp,  lambda a: np.exp(a),  None),
+            (np.log,  np.log,  lambda a: 1.0 / a,    None),
+            (np.log10, np.log10, lambda a: 1.0 / (a * np.log(10.0)), None),
+            (np.log2,  np.log2,  lambda a: 1.0 / (a * np.log(2.0)),  None),
+            (np.sin, np.sin, np.cos, None),
+            (np.cos, np.cos, lambda a: -np.sin(a), None),
+            (np.tan, np.tan, lambda a: 1.0 / np.cos(a) ** 2, None),
+            (np.arcsin, np.arcsin, lambda a: 1.0 / np.sqrt(1.0 - a**2), None),
+            (np.arccos, np.arccos, lambda a: -1.0 / np.sqrt(1.0 - a**2), None),
+            (np.arctan, np.arctan, lambda a: 1.0 / (1.0 + a**2), None),
+            (np.sinh, np.sinh, np.cosh, None),
+            (np.cosh, np.cosh, np.sinh, None),
+            (np.tanh, np.tanh, lambda a: 1.0 - np.tanh(a)**2, None),
+            (np.arcsinh, np.arcsinh, lambda a: 1.0 / np.sqrt(1.0 + a**2), None),
+            (np.arccosh, np.arccosh, lambda a: 1.0 / np.sqrt(a**2 - 1.0), None),
+            (np.arctanh, np.arctanh, lambda a: 1.0 / (1.0 - a**2), None),
+            (np.degrees, np.degrees, lambda a: np.full_like(a, 180.0 / np.pi), None),
+            (np.radians, np.radians, lambda a: np.full_like(a, np.pi / 180.0), None),
+            (np.deg2rad, np.deg2rad, lambda a: np.full_like(a, np.pi / 180.0), None),
+            (np.rad2deg, np.rad2deg, lambda a: np.full_like(a, 180.0 / np.pi), None),
+        ]:
+            _m[ufunc] = (nom, ds, do)
+        cls._UFUNC_MAP = _m
+
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        """Support numpy ufuncs acting on UNDArray operands."""
+        if method != "__call__" or kwargs.get("out") is not None:
+            return NotImplemented
+
+        UNDArray._build_ufunc_map()
+
+        if ufunc not in UNDArray._UFUNC_MAP:
+            return NotImplemented
+
+        nom_func, dself, dother = UNDArray._UFUNC_MAP[ufunc]
+
+        # Unary ufuncs
+        if ufunc.nin == 1:
+            (x,) = inputs
+            if not isinstance(x, UNDArray):
+                return NotImplemented
+            return x._unary_op(nom_func, dself)
+
+        # Binary ufuncs
+        if ufunc.nin == 2:
+            a, b = inputs
+            if isinstance(a, UNDArray):
+                if dother is None:
+                    # Only scalar/array exponent supported (e.g. np.power)
+                    if isinstance(b, UNDArray):
+                        return NotImplemented
+                    return a.__pow__(b)
+                return a._binary_op(b, nom_func, dself, dother)
+            if isinstance(b, UNDArray):
+                # Reflected: swap operands and swap derivatives
+                return b._binary_op(a, lambda x, y: nom_func(y, x), dother, dself)
+
+        return NotImplemented
