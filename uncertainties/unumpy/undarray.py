@@ -34,11 +34,12 @@ def _pow_deriv_base(base: np.ndarray, exponent: np.ndarray) -> np.ndarray:
         exponent_int = np.mod(exponent, 1.0) == 0
         base_pos = base > 0
         base_zero = base == 0
-        base_neg = ~(base_pos | base_zero)
+        base_neg = base < 0
         neg_int_exp_ok = base_neg & exponent_int
         zero_int_exp_ok = base_zero & exponent_int & (exponent >= 1)
         base_ok = base_pos | neg_int_exp_ok | zero_int_exp_ok
         out = np.where(base_ok, exponent * np.power(base, exponent - 1.0), np.nan)
+        # 0 ** 0 has a finite derivative (0) in the scalar implementation.
         out = np.where(base_zero & (exponent == 0), 0.0, out)
     return out
 
