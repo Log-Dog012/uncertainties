@@ -31,7 +31,8 @@ def _broadcast_to_shape(values: Any, shape: tuple[int, ...]) -> np.ndarray:
 
 def _pow_deriv_base(base: np.ndarray, exponent: np.ndarray) -> np.ndarray:
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-        base_ok = (base != 0) | (np.mod(exponent, 1.0) == 0)
+        zero_base_ok = (exponent >= 1.0) & (np.mod(exponent, 1.0) == 0)
+        base_ok = (base != 0) | zero_base_ok
         out = np.where(base_ok, exponent * np.power(base, exponent - 1.0), np.nan)
         out = np.where(exponent == 0, 0.0, out)
     return out
