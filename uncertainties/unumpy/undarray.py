@@ -320,9 +320,9 @@ class UNDArray:
     def __rpow__(self, other: Any) -> "UNDArray":
         return self._binary_op(
             other,
-            lambda self_val, other_val: np.power(other_val, self_val),
-            lambda self_val, other_val: _pow_deriv_exponent(other_val, self_val),
-            lambda self_val, other_val: _pow_deriv_base(other_val, self_val),
+            lambda exp_val, base_val: np.power(base_val, exp_val),
+            lambda exp_val, base_val: _pow_deriv_exponent(base_val, exp_val),
+            lambda exp_val, base_val: _pow_deriv_base(base_val, exp_val),
         )
 
     def reshape(self, *shape: int) -> "UNDArray":

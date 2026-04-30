@@ -826,14 +826,11 @@ Original documentation:
         if function_name in umath_core.locally_cst_funcs:
             setattr(this_module, unumpy_name, vectorized)
         elif function_name in binary_undarray_funcs:
-            if function_name == "pow":
-                _np_nom_func = numpy.power
-            elif function_name == "atan2":
-                _np_nom_func = numpy.arctan2
-            elif function_name == "hypot":
-                _np_nom_func = numpy.hypot
-            else:
-                _np_nom_func = None
+            _np_nom_func = {
+                "pow": numpy.power,
+                "atan2": numpy.arctan2,
+                "hypot": numpy.hypot,
+            }[function_name]
 
             def undarray_wrapper(
                 x,
