@@ -26,6 +26,12 @@ import uncertainties.core as uncert_core
 from .undarray import UNDArray
 
 
+def _is_fast_path_eligible(value):
+    if isinstance(value, UNDArray):
+        return True
+    return numpy.asarray(value).dtype != object
+
+
 def fixed_derivative_ufunc(name):
     if name == "sin":
         return numpy.cos
@@ -843,11 +849,6 @@ Original documentation:
             ):
                 if isinstance(x, UNDArray) or isinstance(y, UNDArray):
                     if not args and not kwargs and _np_nom is not None:
-                        def _is_fast_path_eligible(value):
-                            if isinstance(value, UNDArray):
-                                return True
-                            return numpy.asarray(value).dtype != object
-
                         if _is_fast_path_eligible(x) and _is_fast_path_eligible(y):
                             try:
                                 return _np_nom(x, y)

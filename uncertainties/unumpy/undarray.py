@@ -33,8 +33,8 @@ def _pow_deriv_base(base: np.ndarray, exponent: np.ndarray) -> np.ndarray:
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         exponent_int = np.mod(exponent, 1.0) == 0
         base_pos = base > 0
-        base_neg = base < 0
         base_zero = base == 0
+        base_neg = ~(base_pos | base_zero)
         neg_int_exp_ok = base_neg & exponent_int
         zero_int_exp_ok = base_zero & exponent_int & (exponent >= 1)
         base_ok = base_pos | neg_int_exp_ok | zero_int_exp_ok
