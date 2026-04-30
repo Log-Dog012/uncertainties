@@ -42,6 +42,7 @@ def _pow_deriv_exponent(base: np.ndarray, exponent: np.ndarray) -> np.ndarray:
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         out = np.log(base) * np.power(base, exponent)
         out = np.where((base == 0) & (exponent > 0), 0.0, out)
+        out = np.where((base == 0) & (exponent <= 0), np.nan, out)
     return out
 
 
