@@ -281,3 +281,54 @@ class TestArrayUfunc:
         cov_und = uc.covariance_matrix(res_und.to_uarray())
         np.testing.assert_allclose(cov_obj, cov_und)
 
+
+class TestBinaryFunctions:
+    def test_hypot_matches_object_array(self):
+        a = _make_und([3.0, 4.0], [0.3, 0.4])
+        b = _make_und([4.0, 5.0], [0.2, 0.1])
+        a_obj = _make_obj([3.0, 4.0], [0.3, 0.4])
+        b_obj = _make_obj([4.0, 5.0], [0.2, 0.1])
+
+        res_obj = unp.hypot(a_obj, b_obj)
+        res_unp = unp.hypot(a, b)
+        res_np = np.hypot(a, b)
+
+        np.testing.assert_allclose(res_unp.n, unp.nominal_values(res_obj))
+        np.testing.assert_allclose(res_unp.u, unp.std_devs(res_obj), rtol=1e-10)
+        np.testing.assert_allclose(res_np.n, unp.nominal_values(res_obj))
+        np.testing.assert_allclose(res_np.u, unp.std_devs(res_obj), rtol=1e-10)
+
+    def test_arctan2_matches_object_array(self):
+        y = _make_und([1.0, 2.0], [0.1, 0.2])
+        x = _make_und([2.0, 1.5], [0.2, 0.1])
+        y_obj = _make_obj([1.0, 2.0], [0.1, 0.2])
+        x_obj = _make_obj([2.0, 1.5], [0.2, 0.1])
+
+        res_obj = unp.arctan2(y_obj, x_obj)
+        res_unp = unp.arctan2(y, x)
+        res_np = np.arctan2(y, x)
+
+        np.testing.assert_allclose(res_unp.n, unp.nominal_values(res_obj))
+        np.testing.assert_allclose(res_unp.u, unp.std_devs(res_obj), rtol=1e-10)
+        np.testing.assert_allclose(res_np.n, unp.nominal_values(res_obj))
+        np.testing.assert_allclose(res_np.u, unp.std_devs(res_obj), rtol=1e-10)
+
+    def test_power_with_uncertain_exponent(self):
+        base = _make_und([2.0, 3.0], [0.2, 0.3])
+        exponent = _make_und([1.5, 2.0], [0.1, 0.05])
+        base_obj = _make_obj([2.0, 3.0], [0.2, 0.3])
+        exponent_obj = _make_obj([1.5, 2.0], [0.1, 0.05])
+
+        res_obj = np.power(base_obj, exponent_obj)
+        res_np = np.power(base, exponent)
+        res_unp = unp.pow(base, exponent)
+
+        np.testing.assert_allclose(res_np.n, unp.nominal_values(res_obj))
+        np.testing.assert_allclose(res_np.u, unp.std_devs(res_obj), rtol=1e-10)
+        np.testing.assert_allclose(res_unp.n, unp.nominal_values(res_obj))
+        np.testing.assert_allclose(res_unp.u, unp.std_devs(res_obj), rtol=1e-10)
+
+        res_obj_rpow = 2.0 ** exponent_obj
+        res_rpow = 2.0 ** exponent
+        np.testing.assert_allclose(res_rpow.n, unp.nominal_values(res_obj_rpow))
+        np.testing.assert_allclose(res_rpow.u, unp.std_devs(res_obj_rpow), rtol=1e-10)
