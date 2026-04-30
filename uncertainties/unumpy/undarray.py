@@ -37,10 +37,13 @@ def _pow_deriv_base(base: np.ndarray, exponent: np.ndarray) -> np.ndarray:
         base_neg = base < 0
         neg_int_exp_ok = base_neg & exponent_int
         zero_int_exp_ok = base_zero & exponent_int & (exponent >= 1)
+        zero_zero_ok = base_zero & (exponent == 0)
         base_ok = base_pos | neg_int_exp_ok | zero_int_exp_ok
-        out = np.where(base_ok, exponent * np.power(base, exponent - 1.0), np.nan)
-        # 0 ** 0 has a finite derivative (0) in the scalar implementation.
-        out = np.where(base_zero & (exponent == 0), 0.0, out)
+        out = np.where(
+            zero_zero_ok,
+            0.0,
+            np.where(base_ok, exponent * np.power(base, exponent - 1.0), np.nan),
+        )
     return out
 
 
@@ -316,7 +319,11 @@ class UNDArray:
     def __pow__(self, other: Any) -> "UNDArray":
         if isinstance(other, UNDArray):
             return self._binary_op(other, np.power, _pow_deriv_base, _pow_deriv_exponent)
-        return self._binary_op(other, np.power, _pow_deriv_base, None)
+        other_arr = np.asarray(other)
+        if other_arr.dtype == object:
+            other_und = UNDArray.from_uarray(other_arr)
+            return self._binary_op(other_und, np.power, _pow_deriv_base, _pow_deriv_exponent)
+        return self._binary_op(other_arr, np.power, _pow_deriv_base, None)
 
     def __rpow__(self, other: Any) -> "UNDArray":
         return self._binary_op(
