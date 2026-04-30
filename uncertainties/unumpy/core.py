@@ -45,18 +45,17 @@ def fixed_derivative_ufunc(name):
         return lambda x: -1.0 / numpy.sqrt(1.0 - x**2)
     if name == "arctan":
         return lambda x: 1.0 / (1.0 + x**2)
-    if name == "asinh":
-        return lambda x: 1.0 / numpy.sqrt(1.0 + x**2)
-    if name == "arcsinh":
+    # umath uses 'asinh' (no arc- prefix); numpy uses 'arcsinh' — both map here.
+    if name in ("asinh", "arcsinh"):
         return lambda x: 1.0 / numpy.sqrt(1.0 + x**2)
     if name == "arccosh":
         return lambda x: 1.0 / numpy.sqrt(x**2 - 1.0)
     if name == "arctanh":
         return lambda x: 1.0 / (1.0 - x**2)
     if name == "degrees":
-        return lambda x: numpy.full_like(x, 180.0 / numpy.pi, dtype=numpy.float64)
+        return lambda x: numpy.full_like(x, 180.0 / numpy.pi)
     if name == "radians":
-        return lambda x: numpy.full_like(x, numpy.pi / 180.0, dtype=numpy.float64)
+        return lambda x: numpy.full_like(x, numpy.pi / 180.0)
     if name == "erf":
         return lambda x: 2.0 / numpy.sqrt(numpy.pi) * numpy.exp(-(x**2))
     if name == "erfc":
