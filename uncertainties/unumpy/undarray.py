@@ -241,7 +241,7 @@ class UNDArray:
             l_other = other._linear
             if dother is None:
                 raise TypeError(
-                    "Binary UNDArray operation requires derivative for other operand when other is UNDArray"
+                    "Internal error: binary operation requires derivative for other operand when other is UNDArray"
                 )
         else:
             n_other = _as_float64_ndarray(other)
@@ -320,9 +320,9 @@ class UNDArray:
     def __rpow__(self, other: Any) -> "UNDArray":
         return self._binary_op(
             other,
-            lambda exp, base: np.power(base, exp),
-            lambda exp, base: _pow_deriv_exponent(base, exp),
-            lambda exp, base: _pow_deriv_base(base, exp),
+            lambda self_val, other_val: np.power(other_val, self_val),
+            lambda self_val, other_val: _pow_deriv_exponent(other_val, self_val),
+            lambda self_val, other_val: _pow_deriv_base(other_val, self_val),
         )
 
     def reshape(self, *shape: int) -> "UNDArray":

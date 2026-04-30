@@ -854,7 +854,9 @@ Original documentation:
                     y_obj = y.to_uarray() if isinstance(y, UNDArray) else y
                     return UNDArray.from_uarray(_vectorized(x_obj, y_obj, *args, **kwargs))
                 if not args and not kwargs:
-                    if numpy.asarray(x).shape == () and numpy.asarray(y).shape == ():
+                    x_arr = numpy.asarray(x)
+                    y_arr = numpy.asarray(y)
+                    if x_arr.shape == () and y_arr.shape == ():
                         return _func(x, y)
                 return _vectorized(x, y, *args, **kwargs)
 
