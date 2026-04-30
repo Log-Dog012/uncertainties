@@ -843,10 +843,16 @@ Original documentation:
             ):
                 if isinstance(x, UNDArray) or isinstance(y, UNDArray):
                     if not args and not kwargs and _np_nom is not None:
-                        try:
-                            return _np_nom(x, y)
-                        except TypeError:
-                            pass
+                        def _is_plain_numeric(value):
+                            if isinstance(value, UNDArray):
+                                return True
+                            return numpy.asarray(value).dtype != object
+
+                        if _is_plain_numeric(x) and _is_plain_numeric(y):
+                            try:
+                                return _np_nom(x, y)
+                            except TypeError:
+                                pass
                     x_obj = x.to_uarray() if isinstance(x, UNDArray) else x
                     y_obj = y.to_uarray() if isinstance(y, UNDArray) else y
                     return UNDArray.from_uarray(_vectorized(x_obj, y_obj, *args, **kwargs))

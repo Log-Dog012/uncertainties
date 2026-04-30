@@ -31,16 +31,20 @@ def _broadcast_to_shape(values: Any, shape: tuple[int, ...]) -> np.ndarray:
 
 def _pow_deriv_base(base: np.ndarray, exponent: np.ndarray) -> np.ndarray:
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-        zero_base_ok = (exponent >= 1.0) & (np.mod(exponent, 1.0) == 0)
-        base_ok = (base != 0) | zero_base_ok
+        exponent_int = np.mod(exponent, 1.0) == 0
+        base_pos = base > 0
+        base_neg = base < 0
+        base_zero = base == 0
+        base_ok = base_pos | (exponent_int & (base_neg | (base_zero & (exponent >= 1))))
         out = np.where(base_ok, exponent * np.power(base, exponent - 1.0), np.nan)
-        out = np.where(exponent == 0, 0.0, out)
+        out = np.where(base_zero & (exponent == 0), 0.0, out)
     return out
 
 
 def _pow_deriv_exponent(base: np.ndarray, exponent: np.ndarray) -> np.ndarray:
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-        out = np.log(base) * np.power(base, exponent)
+        base_pos = base > 0
+        out = np.where(base_pos, np.log(base) * np.power(base, exponent), np.nan)
         out = np.where((base == 0) & (exponent > 0), 0.0, out)
         out = np.where((base == 0) & (exponent <= 0), np.nan, out)
     return out
@@ -309,15 +313,7 @@ class UNDArray:
     def __pow__(self, other: Any) -> "UNDArray":
         if isinstance(other, UNDArray):
             return self._binary_op(other, np.power, _pow_deriv_base, _pow_deriv_exponent)
-        p = _as_float64_ndarray(other)
-        p = np.broadcast_to(p, np.broadcast(self.n, p).shape)
-        n_self = np.broadcast_to(self.n, p.shape)
-        l_self = self._linear
-        if n_self.shape != self.n.shape:
-            l_self = _LinearPart(np.broadcast_to(self._linear.coeffs, n_self.shape))
-        n_out = n_self**p
-        factor = p * (n_self ** (p - 1.0))
-        return UNDArray(n_out, l_self.scale(factor))
+        return self._binary_op(other, np.power, _pow_deriv_base, None)
 
     def __rpow__(self, other: Any) -> "UNDArray":
         return self._binary_op(
