@@ -23,6 +23,7 @@ import numpy
 # Local modules:
 import uncertainties.umath_core as umath_core
 import uncertainties.core as uncert_core
+from .undarray import UNDArray
 
 __all__ = [
     # Factory functions:
@@ -102,6 +103,8 @@ def nominal_values(arr):
     numbers with uncertainties.
     """
 
+    if isinstance(arr, UNDArray):
+        return unumpy_to_numpy_matrix(arr.nominal_values())
     return unumpy_to_numpy_matrix(to_nominal_values(arr))
 
 
@@ -119,6 +122,8 @@ def std_devs(arr):
     numbers with uncertainties.
     """
 
+    if isinstance(arr, UNDArray):
+        return unumpy_to_numpy_matrix(arr.std_devs())
     return unumpy_to_numpy_matrix(to_std_devs(arr))
 
 
@@ -737,25 +742,64 @@ def define_vectorized_funcs():
             else {"otypes": [object]}
         )
 
-        setattr(
-            this_module,
-            unumpy_name,
-            #!!!! For umath_core.locally_cst_funcs, would it make sense
-            # to optimize this by using instead the equivalent (? see
-            # above) vectorized NumPy function on the nominal values?
-            numpy.vectorize(
-                func,
-                doc="""\
+        vectorized = numpy.vectorize(
+            func,
+            doc="""\
 Vectorized version of umath.%s.
 
 Original documentation:
 %s"""
-                % (function_name, func.__doc__),
-                **otypes,
-            ),
+            % (function_name, func.__doc__),
+            **otypes,
         )
+
+        if function_name in umath_core.locally_cst_funcs:
+            setattr(this_module, unumpy_name, vectorized)
+        else:
+            deriv_name = func_name_translations.get(function_name, function_name)
+
+            def undarray_wrapper(x, *args, _vectorized=vectorized, **kwargs):
+                if isinstance(x, UNDArray) and not args and not kwargs:
+                    f_nom = getattr(numpy, deriv_name)
+                    f_der = fixed_derivative_ufunc(deriv_name)
+                    return x._unary_op(f_nom, f_der)
+                return _vectorized(x, *args, **kwargs)
+
+            undarray_wrapper.__name__ = unumpy_name
+            undarray_wrapper.__doc__ = vectorized.__doc__
+            setattr(this_module, unumpy_name, undarray_wrapper)
 
         __all__.append(unumpy_name)
 
 
 define_vectorized_funcs()
+
+
+def fixed_derivative_ufunc(name):
+    if name == "sin":
+        return numpy.cos
+    if name == "cos":
+        return lambda x: -numpy.sin(x)
+    if name == "tan":
+        return lambda x: 1 + numpy.tan(x) ** 2
+    if name == "sinh":
+        return numpy.cosh
+    if name == "cosh":
+        return numpy.sinh
+    if name == "tanh":
+        return lambda x: 1 - numpy.tanh(x) ** 2
+    if name == "exp":
+        return numpy.exp
+    if name == "expm1":
+        return numpy.exp
+    if name == "log":
+        return lambda x: 1 / x
+    if name == "log10":
+        return lambda x: 1 / (x * numpy.log(10.0))
+    if name == "log1p":
+        return lambda x: 1 / (1 + x)
+    if name == "sqrt":
+        return lambda x: 0.5 / numpy.sqrt(x)
+    if name == "fabs":
+        return numpy.sign
+    raise NotImplementedError(f"UNDArray derivative not implemented for {name}")
