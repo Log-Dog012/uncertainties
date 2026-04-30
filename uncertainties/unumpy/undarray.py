@@ -316,7 +316,12 @@ class UNDArray:
         return UNDArray(n_out, l_self.scale(factor))
 
     def __rpow__(self, other: Any) -> "UNDArray":
-        return UNDArray.from_nominal_and_std(other, 0.0).__pow__(self)
+        return self._binary_op(
+            other,
+            lambda exponent, base: np.power(base, exponent),
+            lambda exponent, base: _pow_deriv_exponent(base, exponent),
+            lambda exponent, base: _pow_deriv_base(base, exponent),
+        )
 
     def reshape(self, *shape: int) -> "UNDArray":
         n = self.n.reshape(*shape)
